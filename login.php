@@ -68,7 +68,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         // You can store other user info here if needed
 
                         // Redirect to the protected dashboard page
-                        header("Location: dashboard.php");
+                        header("Location: index.php");
                         exit(); // Important to stop script execution after redirect
 
                     } else {
