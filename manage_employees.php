@@ -1,6 +1,6 @@
 <?php
 // Start session and check if user is logged in
-session_start();
+session_start(); // Make sure session is started BEFORE including navbar
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
@@ -12,6 +12,7 @@ require_once 'db_connect.php';
 // Get the ID of the currently logged-in user
 $current_user_id = $_SESSION['user_id'];
 
+// --- PHP Logic for Employee Management (Add, Edit, Deactivate, Fetch etc.) ---
 // Initialize variables
 $employees = [];
 $errors = [];
@@ -22,7 +23,6 @@ $edit_employee_data = null;
 // --- Check for Edit Request (GET) ---
 if ($_SERVER["REQUEST_METHOD"] == "GET" && isset($_GET['edit']) && filter_var($_GET['edit'], FILTER_VALIDATE_INT)) {
     $employee_id_to_edit = $_GET['edit'];
-    // Removed job_title from SELECT
     $sql_edit = "SELECT id, name, username, phone, location FROM employees WHERE id = ?";
     if ($stmt_edit = $conn->prepare($sql_edit)) {
         $stmt_edit->bind_param("i", $employee_id_to_edit);
@@ -40,16 +40,13 @@ if ($_SERVER["REQUEST_METHOD"] == "GET" && isset($_GET['edit']) && filter_var($_
     }
 }
 
-
 // --- Handle Add Employee Form Submission ---
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_employee'])) {
-    // Get data from form - removed job_title
     $name = trim($_POST['name']);
     $username = trim($_POST['username']);
     $phone = trim($_POST['phone']);
     $location = trim($_POST['location']);
 
-    // Validation
     if (empty($name)) {
         $errors[] = "Name is required.";
     }
@@ -58,10 +55,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_employee'])) {
     }
 
     if (empty($errors)) {
-        // Removed job_title from INSERT and VALUES placeholders
         $sql_insert = "INSERT INTO employees (name, username, phone, location, registered_by_user_id) VALUES (?, ?, ?, ?, ?)";
         if ($stmt = $conn->prepare($sql_insert)) {
-            // Updated bind_param types ('ssssi' - 4 strings, 1 integer)
             $stmt->bind_param("ssssi", $name, $username, $phone, $location, $current_user_id);
             if ($stmt->execute()) {
                 header("Location: manage_employees.php?success=1");
@@ -82,14 +77,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_employee'])) {
 
 // --- Handle Update Employee Form Submission ---
 elseif ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_employee'])) {
-    // Get data from form - removed job_title
     $employee_id = trim($_POST['employee_id']);
     $name = trim($_POST['name']);
     $username = trim($_POST['username']);
     $phone = trim($_POST['phone']);
     $location = trim($_POST['location']);
 
-    // Validation
     if (empty($employee_id) || !filter_var($employee_id, FILTER_VALIDATE_INT)) {
         $errors[] = "Invalid Employee ID.";
     }
@@ -101,17 +94,15 @@ elseif ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_employee'])
     }
 
     if (empty($errors)) {
-        // Removed job_title from UPDATE statement
         $sql_update = "UPDATE employees SET name = ?, username = ?, phone = ?, location = ? WHERE id = ?";
         if ($stmt = $conn->prepare($sql_update)) {
-            // Updated bind_param types ('ssssi' - 4 strings, 1 integer for ID)
             $stmt->bind_param("ssssi", $name, $username, $phone, $location, $employee_id);
             if ($stmt->execute()) {
                 if ($stmt->affected_rows > 0) {
                     header("Location: manage_employees.php?success=4");
                     exit();
                 } else {
-                    header("Location: manage_employees.php?success=5"); // No changes detected
+                    header("Location: manage_employees.php?success=5");
                     exit();
                 }
             } else {
@@ -126,25 +117,21 @@ elseif ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_employee'])
             $errors[] = "Database error preparing update statement: " . $conn->error;
         }
     }
-    // If update fails, stay in edit mode
     if (!empty($errors)) {
         $edit_mode = true;
-        // Repopulate $edit_employee_data with submitted (but failed) data
         $edit_employee_data = [
             'id' => $employee_id,
             'name' => $name,
             'username' => $username,
             'phone' => $phone,
-            'location' => $location // Removed job_title
+            'location' => $location
         ];
     }
 }
 
-
 // --- Handle Deactivate/Activate Actions (GET requests) ---
 elseif ($_SERVER["REQUEST_METHOD"] == "GET") {
     $action_success = false;
-    // Deactivate
     if (isset($_GET['deactivate']) && filter_var($_GET['deactivate'], FILTER_VALIDATE_INT)) {
         $employee_id_to_deactivate = $_GET['deactivate'];
         $sql_deactivate = "UPDATE employees SET status = 'inactive' WHERE id = ?";
@@ -163,9 +150,7 @@ elseif ($_SERVER["REQUEST_METHOD"] == "GET") {
             header("Location: manage_employees.php?success=2");
             exit();
         }
-    }
-    // Activate
-    elseif (isset($_GET['activate']) && filter_var($_GET['activate'], FILTER_VALIDATE_INT)) {
+    } elseif (isset($_GET['activate']) && filter_var($_GET['activate'], FILTER_VALIDATE_INT)) {
         $employee_id_to_activate = $_GET['activate'];
         $sql_activate = "UPDATE employees SET status = 'active' WHERE id = ?";
         if ($stmt = $conn->prepare($sql_activate)) {
@@ -207,10 +192,8 @@ if (isset($_GET['success'])) {
     }
 }
 
-
 // --- Fetch employee list (Always fetch AFTER potential updates/adds/status changes) ---
 $employees = [];
-// Removed e.job_title from SELECT
 $sql_fetch = "SELECT e.id, e.name, e.username, e.phone, e.location, e.status, e.created_at, u.username as registered_by
               FROM employees e
               LEFT JOIN users u ON e.registered_by_user_id = u.id
@@ -220,10 +203,9 @@ if ($result && $result->num_rows > 0) {
     while ($row = $result->fetch_assoc()) {
         $employees[] = $row;
     }
-} elseif (!$result && empty($errors)) { // Avoid overwriting previous errors if fetching fails
+} elseif (!$result && empty($errors)) {
     $errors[] = "Error fetching employees: " . $conn->error;
 }
-
 
 $conn->close();
 
@@ -236,7 +218,7 @@ $conn->close();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $edit_mode ? 'Edit Employee' : 'Employee Management'; ?></title>
     <style>
-        /* CSS Styles remain the same */
+        /* Remove the old .navbar styles from here */
         body {
             font-family: sans-serif;
             background-color: #f4f4f4;
@@ -244,46 +226,7 @@ $conn->close();
             padding: 0;
         }
 
-        .navbar {
-            background-color: #333;
-            color: white;
-            padding: 10px 20px;
-            width: 100%;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-sizing: border-box;
-        }
-
-        .navbar span {
-            font-size: 1.1em;
-        }
-
-        .navbar .nav-links a {
-            color: #f4f4f4;
-            text-decoration: none;
-            padding: 8px 15px;
-            border-radius: 4px;
-            margin-left: 10px;
-            transition: background-color 0.3s ease;
-        }
-
-        .navbar .nav-links a.nav-link {
-            background-color: #007bff;
-        }
-
-        .navbar .nav-links a.nav-link:hover {
-            background-color: #0056b3;
-        }
-
-        .navbar .nav-links a.logout-link {
-            background-color: #dc3545;
-        }
-
-        .navbar .nav-links a.logout-link:hover {
-            background-color: #c82333;
-        }
-
+        /* Keep other styles (.container, .form-container, .employee-table etc.) */
         .container {
             padding: 20px;
             max-width: 1200px;
@@ -500,13 +443,10 @@ $conn->close();
 
 <body>
 
-    <div class="navbar">
-        <span>Welcome, <?php echo htmlspecialchars(isset($_SESSION['username']) ? $_SESSION['username'] : 'User'); ?>!</span>
-        <div class="nav-links">
-            <a href="index.php" class="nav-link">Main Page</a>
-            <a href="logout.php" class="logout-link" onclick="return confirm('Are you sure you want to logout?');">Logout</a>
-        </div>
-    </div>
+    <?php
+    // Include the new navigation bar
+    require_once 'navbar.php';
+    ?>
 
     <div class="container">
         <h1>Employee Management</h1>
@@ -577,8 +517,7 @@ $conn->close();
                 <tbody>
                     <?php if (!empty($employees)): ?>
                         <?php foreach ($employees as $emp): ?>
-                            <tr <?php echo ($edit_mode && isset($edit_employee_data['id']) && $edit_employee_data['id'] == $emp['id']) ? 'style="background-color: #cfe2ff;"' : ''; // Highlight row being edited 
-                                ?>>
+                            <tr <?php echo ($edit_mode && isset($edit_employee_data['id']) && $edit_employee_data['id'] == $emp['id']) ? 'style="background-color: #cfe2ff;"' : ''; ?>>
                                 <td><?php echo htmlspecialchars($emp['id']); ?></td>
                                 <td><?php echo htmlspecialchars($emp['name']); ?></td>
                                 <td><?php echo htmlspecialchars($emp['username']); ?></td>
