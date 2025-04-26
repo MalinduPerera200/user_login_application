@@ -9,13 +9,20 @@ if (!isset($_SESSION['user_id'])) {
 // Include database connection
 require_once 'db_connect.php';
 
+// Get the ID of the currently logged-in user
+$current_user_id = $_SESSION['user_id'];
+
 // Initialize variables
 $employees = [];
 $errors = [];
 $success_message = '';
 
 // --- Fetch existing employees ---
-$sql_fetch = "SELECT id, first_name, last_name, email, phone, job_title, hire_date, status FROM employees ORDER BY first_name ASC";
+// Updated SELECT query to fetch new fields and joining with users table
+$sql_fetch = "SELECT e.id, e.name, e.username, e.phone, e.job_title, e.location, e.status, e.created_at, u.username as registered_by
+              FROM employees e
+              LEFT JOIN users u ON e.registered_by_user_id = u.id
+              ORDER BY e.name ASC";
 $result = $conn->query($sql_fetch);
 
 if ($result && $result->num_rows > 0) {
@@ -23,46 +30,151 @@ if ($result && $result->num_rows > 0) {
         $employees[] = $row;
     }
 } elseif (!$result) {
-    $errors[] = "Error fetching employees: " . $conn->error; // Show error during development
+    // Display error only during development/debugging
+    // In production, log the error instead
+    $errors[] = "Error fetching employees: " . $conn->error;
 }
 
-// --- Handle Add Employee Form Submission (Basic Structure) ---
+// --- Handle Add Employee Form Submission ---
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_employee'])) {
-    // Get data from form (add validation later)
-    $first_name = trim($_POST['first_name']);
-    $last_name = trim($_POST['last_name']);
-    $email = trim($_POST['email']);
+    // Get data from form - updated fields
+    $name = trim($_POST['name']);
+    $username = trim($_POST['username']); // Employee's username
     $phone = trim($_POST['phone']);
     $job_title = trim($_POST['job_title']);
-    $hire_date = $_POST['hire_date']; // Needs validation
+    $location = trim($_POST['location']);
 
-    // Basic validation example (expand this)
-    if (empty($first_name) || empty($last_name)) {
-        $errors[] = "First name and Last name are required.";
+    // Basic validation - adapt as needed
+    if (empty($name)) {
+        $errors[] = "Name is required.";
     }
-    // Add more validation (email format, phone format, date format etc.)
+    if (empty($username)) {
+        $errors[] = "Username is required.";
+    }
+    // Add more specific validation (e.g., username format, phone format)
 
-    // If no errors, insert into database (add prepared statements)
+    // If no validation errors, proceed to insert
     if (empty($errors)) {
-        $sql_insert = "INSERT INTO employees (first_name, last_name, email, phone, job_title, hire_date) VALUES (?, ?, ?, ?, ?, ?)";
+        // Updated INSERT query with new fields including registered_by_user_id
+        $sql_insert = "INSERT INTO employees (name, username, phone, job_title, location, registered_by_user_id) VALUES (?, ?, ?, ?, ?, ?)";
+
         if ($stmt = $conn->prepare($sql_insert)) {
-            $stmt->bind_param("ssssss", $first_name, $last_name, $email, $phone, $job_title, $hire_date);
+            // Updated bind_param types ('sssssi' - 5 strings, 1 integer) and variables
+            $stmt->bind_param("sssssi", $name, $username, $phone, $job_title, $location, $current_user_id);
+
             if ($stmt->execute()) {
                 $success_message = "Employee added successfully!";
-                // Refresh the page or list to show the new employee
-                header("Location: manage_employees.php"); // Simple refresh
+                // Redirect to prevent form resubmission on refresh
+                header("Location: manage_employees.php?success=1"); // Add a success flag
                 exit();
             } else {
-                $errors[] = "Error adding employee: " . $stmt->error;
+                // Check for duplicate username error (MySQL error code 1062 for UNIQUE constraint)
+                if ($stmt->errno == 1062) {
+                    // Check if the error message contains the name of the unique key for username
+                    if (strpos($stmt->error, 'username_unique') !== false) {
+                        $errors[] = "Error: Employee username already exists.";
+                    } else {
+                        // Handle other potential unique constraint violations if any
+                        $errors[] = "Error: Duplicate entry detected.";
+                    }
+                } else {
+                    // Generic error for other issues
+                    $errors[] = "Error adding employee: " . $stmt->error; // Show specific error in dev
+                    // error_log("Error adding employee: " . $stmt->error); // Log error in production
+                }
+            }
+            $stmt->close();
+        } else {
+            $errors[] = "Database error preparing statement: " . $conn->error; // Show specific error in dev
+            // error_log("Database error preparing statement: " . $conn->error); // Log error in production
+        }
+    }
+}
+
+// --- Handle Deactivate/Activate Actions ---
+if ($_SERVER["REQUEST_METHOD"] == "GET") {
+    $action_success = false; // Flag for success message
+
+    // Deactivate Employee
+    if (isset($_GET['deactivate']) && filter_var($_GET['deactivate'], FILTER_VALIDATE_INT)) {
+        $employee_id_to_deactivate = $_GET['deactivate'];
+        $sql_deactivate = "UPDATE employees SET status = 'inactive' WHERE id = ?";
+        if ($stmt = $conn->prepare($sql_deactivate)) {
+            $stmt->bind_param("i", $employee_id_to_deactivate);
+            if ($stmt->execute()) {
+                $action_success = true;
+                $success_message = "Employee deactivated successfully.";
+            } else {
+                $errors[] = "Error deactivating employee: " . $stmt->error;
             }
             $stmt->close();
         } else {
             $errors[] = "Database error preparing statement: " . $conn->error;
         }
+        // Redirect to clean URL after action
+        if ($action_success) {
+            header("Location: manage_employees.php?success=2");
+            exit();
+        }
+
+        // Activate Employee
+    } elseif (isset($_GET['activate']) && filter_var($_GET['activate'], FILTER_VALIDATE_INT)) {
+        $employee_id_to_activate = $_GET['activate'];
+        $sql_activate = "UPDATE employees SET status = 'active' WHERE id = ?";
+        if ($stmt = $conn->prepare($sql_activate)) {
+            $stmt->bind_param("i", $employee_id_to_activate);
+            if ($stmt->execute()) {
+                $action_success = true;
+                $success_message = "Employee activated successfully.";
+            } else {
+                $errors[] = "Error activating employee: " . $stmt->error;
+            }
+            $stmt->close();
+        } else {
+            $errors[] = "Database error preparing statement: " . $conn->error;
+        }
+        // Redirect to clean URL after action
+        if ($action_success) {
+            header("Location: manage_employees.php?success=3");
+            exit();
+        }
+    }
+
+    // Display success messages based on redirect flags
+    if (isset($_GET['success'])) {
+        switch ($_GET['success']) {
+            case '1':
+                $success_message = "Employee added successfully!";
+                break;
+            case '2':
+                $success_message = "Employee deactivated successfully.";
+                break;
+            case '3':
+                $success_message = "Employee activated successfully.";
+                break;
+                // Add case '4' for successful update later
+        }
     }
 }
 
-// TODO: Add logic for Update and Deactivate actions
+
+// TODO: Add logic for Editing employee (fetching data for edit form, handling update submission)
+
+
+// Re-fetch employees if an action was performed and page wasn't redirected (e.g., on error)
+// Or simply rely on the redirect for success cases
+if ($_SERVER["REQUEST_METHOD"] == "GET" && (isset($_GET['deactivate']) || isset($_GET['activate'])) && !$action_success) {
+    $employees = []; // Clear previous list if action failed
+    $result = $conn->query($sql_fetch); // Re-run the fetch query
+    if ($result && $result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $employees[] = $row;
+        }
+    } elseif (!$result) {
+        $errors[] = "Error re-fetching employees: " . $conn->error;
+    }
+}
+
 
 $conn->close(); // Close connection at the end
 
@@ -75,7 +187,7 @@ $conn->close(); // Close connection at the end
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Employee Management</title>
     <style>
-        /* Reusing and adapting styles */
+        /* CSS Styles remain the same as the previous version */
         body {
             font-family: sans-serif;
             background-color: #f4f4f4;
@@ -98,29 +210,28 @@ $conn->close(); // Close connection at the end
             font-size: 1.1em;
         }
 
-        .navbar a {
+        .navbar .nav-links a {
             color: #f4f4f4;
             text-decoration: none;
-            padding: 5px 10px;
+            padding: 8px 15px;
             border-radius: 4px;
             margin-left: 10px;
+            transition: background-color 0.3s ease;
         }
 
-        .navbar a.nav-link {
+        .navbar .nav-links a.nav-link {
             background-color: #007bff;
         }
 
-        /* Blue for navigation */
-        .navbar a.nav-link:hover {
+        .navbar .nav-links a.nav-link:hover {
             background-color: #0056b3;
         }
 
-        .navbar a.logout-link {
+        .navbar .nav-links a.logout-link {
             background-color: #dc3545;
         }
 
-        /* Red for logout */
-        .navbar a.logout-link:hover {
+        .navbar .nav-links a.logout-link:hover {
             background-color: #c82333;
         }
 
@@ -140,7 +251,6 @@ $conn->close(); // Close connection at the end
             margin-bottom: 20px;
         }
 
-        /* Form Styles */
         .form-container {
             margin-bottom: 30px;
             padding: 20px;
@@ -164,10 +274,7 @@ $conn->close(); // Close connection at the end
         }
 
         .form-group input[type="text"],
-        .form-group input[type="email"],
-        .form-group input[type="tel"],
-        /* Use tel for phone */
-        .form-group input[type="date"] {
+        .form-group input[type="tel"] {
             width: 100%;
             padding: 10px;
             border: 1px solid #ccc;
@@ -197,6 +304,14 @@ $conn->close(); // Close connection at the end
         .btn-edit {
             background-color: #ffc107;
             color: #212529;
+            padding: 5px 8px;
+            font-size: 13px;
+            margin-right: 5px;
+            text-decoration: none;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: inline-block;
         }
 
         .btn-edit:hover {
@@ -206,6 +321,14 @@ $conn->close(); // Close connection at the end
         .btn-deactivate {
             background-color: #dc3545;
             color: white;
+            padding: 5px 8px;
+            font-size: 13px;
+            margin-right: 5px;
+            text-decoration: none;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: inline-block;
         }
 
         .btn-deactivate:hover {
@@ -215,6 +338,14 @@ $conn->close(); // Close connection at the end
         .btn-activate {
             background-color: #17a2b8;
             color: white;
+            padding: 5px 8px;
+            font-size: 13px;
+            margin-right: 5px;
+            text-decoration: none;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: inline-block;
         }
 
         .btn-activate:hover {
@@ -226,9 +357,6 @@ $conn->close(); // Close connection at the end
             margin-top: 15px;
         }
 
-        /* Align button to right */
-
-        /* Table Styles */
         .employee-table {
             width: 100%;
             border-collapse: collapse;
@@ -240,6 +368,7 @@ $conn->close(); // Close connection at the end
             border: 1px solid #ddd;
             padding: 10px;
             text-align: left;
+            vertical-align: middle;
         }
 
         .employee-table th {
@@ -255,19 +384,10 @@ $conn->close(); // Close connection at the end
             background-color: #dee2e6;
         }
 
-        .employee-table td .actions a,
-        .employee-table td .actions button {
-            display: inline-block;
-            padding: 5px 8px;
-            margin-right: 5px;
-            text-decoration: none;
-            border: none;
-            border-radius: 4px;
-            font-size: 13px;
-            cursor: pointer;
+        .employee-table td .actions {
+            white-space: nowrap;
         }
 
-        /* Status Styles */
         .status-active {
             color: green;
             font-weight: bold;
@@ -278,7 +398,6 @@ $conn->close(); // Close connection at the end
             font-weight: bold;
         }
 
-        /* Messages */
         .message {
             padding: 10px;
             margin-bottom: 15px;
@@ -310,7 +429,7 @@ $conn->close(); // Close connection at the end
 
     <div class="navbar">
         <span>Welcome, <?php echo htmlspecialchars(isset($_SESSION['username']) ? $_SESSION['username'] : 'User'); ?>!</span>
-        <div>
+        <div class="nav-links">
             <a href="index.php" class="nav-link">Main Page</a>
             <a href="logout.php" class="logout-link" onclick="return confirm('Are you sure you want to logout?');">Logout</a>
         </div>
@@ -320,7 +439,7 @@ $conn->close(); // Close connection at the end
         <h1>Employee Management</h1>
 
         <?php
-        // Display Messages
+        // Display Messages (Success or Error)
         if (!empty($success_message)) {
             echo '<div class="message success-message">' . htmlspecialchars($success_message) . '</div>';
         }
@@ -338,16 +457,12 @@ $conn->close(); // Close connection at the end
             <form action="manage_employees.php" method="POST">
                 <div class="form-grid">
                     <div class="form-group">
-                        <label for="first_name">First Name:</label>
-                        <input type="text" id="first_name" name="first_name" required>
+                        <label for="name">Full Name:</label>
+                        <input type="text" id="name" name="name" required>
                     </div>
                     <div class="form-group">
-                        <label for="last_name">Last Name:</label>
-                        <input type="text" id="last_name" name="last_name" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="email">Email:</label>
-                        <input type="email" id="email" name="email">
+                        <label for="username">Username:</label>
+                        <input type="text" id="username" name="username" required>
                     </div>
                     <div class="form-group">
                         <label for="phone">Phone:</label>
@@ -358,8 +473,8 @@ $conn->close(); // Close connection at the end
                         <input type="text" id="job_title" name="job_title">
                     </div>
                     <div class="form-group">
-                        <label for="hire_date">Hire Date:</label>
-                        <input type="date" id="hire_date" name="hire_date">
+                        <label for="location">Location:</label>
+                        <input type="text" id="location" name="location">
                     </div>
                 </div>
                 <div class="form-actions">
@@ -375,12 +490,13 @@ $conn->close(); // Close connection at the end
                 <thead>
                     <tr>
                         <th>ID</th>
-                        <th>First Name</th>
-                        <th>Last Name</th>
-                        <th>Email</th>
+                        <th>Name</th>
+                        <th>Username</th>
                         <th>Phone</th>
                         <th>Job Title</th>
-                        <th>Hire Date</th>
+                        <th>Location</th>
+                        <th>Registered Date</th>
+                        <th>Registered By</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
@@ -390,20 +506,20 @@ $conn->close(); // Close connection at the end
                         <?php foreach ($employees as $emp): ?>
                             <tr>
                                 <td><?php echo htmlspecialchars($emp['id']); ?></td>
-                                <td><?php echo htmlspecialchars($emp['first_name']); ?></td>
-                                <td><?php echo htmlspecialchars($emp['last_name']); ?></td>
-                                <td><?php echo htmlspecialchars($emp['email']); ?></td>
+                                <td><?php echo htmlspecialchars($emp['name']); ?></td>
+                                <td><?php echo htmlspecialchars($emp['username']); ?></td>
                                 <td><?php echo htmlspecialchars($emp['phone']); ?></td>
                                 <td><?php echo htmlspecialchars($emp['job_title']); ?></td>
-                                <td><?php echo htmlspecialchars($emp['hire_date']); ?></td>
+                                <td><?php echo htmlspecialchars($emp['location']); ?></td>
+                                <td><?php echo htmlspecialchars(date('Y-m-d', strtotime($emp['created_at']))); ?></td>
+                                <td><?php echo htmlspecialchars($emp['registered_by'] ?? 'N/A'); ?></td>
                                 <td>
                                     <span class="status-<?php echo htmlspecialchars($emp['status']); ?>">
                                         <?php echo ucfirst(htmlspecialchars($emp['status'])); ?>
                                     </span>
                                 </td>
                                 <td class="actions">
-                                    <a href="manage_employees.php?edit=<?php echo $emp['id']; ?>" class="btn btn-edit">Edit</a>
-
+                                    <a href="manage_employees.php?edit=<?php echo $emp['id']; ?>#employee-form" class="btn btn-edit">Edit</a>
                                     <?php if ($emp['status'] == 'active'): ?>
                                         <a href="manage_employees.php?deactivate=<?php echo $emp['id']; ?>" class="btn btn-deactivate" onclick="return confirm('Are you sure you want to deactivate this employee?');">Deactivate</a>
                                     <?php else: ?>
@@ -414,7 +530,7 @@ $conn->close(); // Close connection at the end
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="9" style="text-align:center;">No employees found.</td>
+                            <td colspan="10" style="text-align:center;">No employees found.</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>
@@ -422,6 +538,7 @@ $conn->close(); // Close connection at the end
         </div>
     </div>
 
+    <div id="employee-form" style="height: 10px;"></div>
 </body>
 
 </html>
