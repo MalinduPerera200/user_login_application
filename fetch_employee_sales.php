@@ -58,7 +58,8 @@ if (!empty($sales_history)) {
     foreach ($sales_history as $sale) {
         echo '<tr>';
         echo '<td>' . htmlspecialchars(date('M d, Y', strtotime($sale['sale_date']))) . '</td>'; // Format date nicely
-        echo '<td>$' . htmlspecialchars(number_format($sale['sale_amount'], 2)) . '</td>'; // Format amount
+        // *** REMOVED the '$' sign from the beginning of this line ***
+        echo '<td>' . htmlspecialchars(number_format($sale['sale_amount'], 2)) . '</td>'; // Format amount without currency symbol
         echo '</tr>';
     }
     echo '</tbody>';

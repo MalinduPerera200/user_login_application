@@ -33,8 +33,7 @@ if ($result_emp && $result_emp->num_rows > 0) {
 
 // --- Handle Form Submission (POST) ---
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_sale'])) {
-    // ... (Existing POST handling logic for Add/Update remains the same) ...
-    // Get data from form
+    // ... (Existing POST handling logic remains the same) ...
     $employee_id = trim($_POST['employee_id']);
     $sale_amount = trim($_POST['sale_amount']);
     $sale_date = trim($_POST['sale_date']);
@@ -43,8 +42,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_sale'])) {
     if (empty($employee_id) || !filter_var($employee_id, FILTER_VALIDATE_INT)) {
         $errors[] = "Please select a valid employee.";
     }
-    if (empty($sale_amount) || !is_numeric($sale_amount) || $sale_amount < 0) {
-        $errors[] = "Please enter a valid positive sale amount.";
+    // Allow 0 amount, but must be numeric
+    if ($sale_amount === '' || !is_numeric($sale_amount) || $sale_amount < 0) {
+        $errors[] = "Please enter a valid non-negative sale amount (can be 0).";
     }
     if (empty($sale_date)) {
         $errors[] = "Please select a sale date.";
@@ -55,10 +55,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_sale'])) {
         }
     }
 
-    // Keep selected values on error
     $selected_employee = $employee_id;
 
-    // If no validation errors, proceed
     if (empty($errors)) {
         $sql_check = "SELECT id FROM sales WHERE employee_id = ? AND sale_date = ?";
         $existing_sale_id = null;
@@ -110,8 +108,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_sale'])) {
     }
 }
 
-// Close connection only if not needed anymore (or close at the very end)
-// $conn->close(); // Might be needed by AJAX call if not handled separately
+// Close connection if no longer needed before HTML output
+// $conn->close(); // Consider closing later if needed by AJAX
 
 ?>
 <!DOCTYPE html>
@@ -165,6 +163,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_sale'])) {
             font-size: 0.95em;
         }
 
+        /* Apply standard styling to all relevant inputs */
         .form-group select,
         .form-group input[type="number"],
         .form-group input[type="date"],
@@ -173,6 +172,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_sale'])) {
             padding: 12px;
             border: 1px solid #ced4da;
             border-radius: 5px;
+            /* Apply border radius to all */
             box-sizing: border-box;
             font-size: 1em;
             transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
@@ -180,6 +180,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_sale'])) {
 
         .form-group input[type="number"] {
             text-align: right;
+            /* Keep amount right-aligned */
         }
 
         .form-group select:focus,
@@ -189,41 +190,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_sale'])) {
             box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
         }
 
-        .input-group {
-            position: relative;
-            display: flex;
-            align-items: stretch;
-            width: 100%;
-        }
-
-        .input-group-prepend {
-            margin-right: -1px;
-        }
-
-        .input-group-text {
-            display: flex;
-            align-items: center;
-            padding: 12px 15px;
-            margin-bottom: 0;
-            font-size: 1em;
-            font-weight: 400;
-            line-height: 1.5;
-            color: #495057;
-            text-align: center;
-            white-space: nowrap;
-            background-color: #e9ecef;
-            border: 1px solid #ced4da;
-            border-radius: 5px 0 0 5px;
-        }
-
-        .input-group input[type="number"] {
-            border-radius: 0 5px 5px 0;
-            position: relative;
-            flex: 1 1 auto;
-            width: 1%;
-            min-width: 0;
-        }
-
+        /* Remove input-group styles as they are no longer needed */
         .btn-submit {
             background-color: #28a745;
             color: white;
@@ -267,14 +234,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_sale'])) {
             margin: 0;
         }
 
-        /* Styles for Sales History */
         #sales-history {
             margin-top: 30px;
             padding-top: 20px;
             border-top: 1px solid #dee2e6;
-            /* Separator line */
             display: none;
-            /* Initially hidden */
         }
 
         #sales-history h3 {
@@ -285,13 +249,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_sale'])) {
 
         #sales-history-content {
             max-height: 300px;
-            /* Limit height and make scrollable */
             overflow-y: auto;
             border: 1px solid #e9ecef;
             border-radius: 4px;
             padding: 10px;
             background-color: #f8f9fa;
-            /* Light background for history area */
         }
 
         #sales-history-content table {
@@ -310,13 +272,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_sale'])) {
         #sales-history-content th {
             background-color: #e9ecef;
             position: sticky;
-            /* Make header sticky */
             top: 0;
         }
 
         #sales-history-content td:last-child {
             text-align: right;
-            /* Align amount to right */
         }
 
         #sales-history-content .loading,
@@ -365,11 +325,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_sale'])) {
 
             <div class="form-group">
                 <label for="sale_amount">Amount</label>
-                <div class="input-group">
-                    <div class="input-group-prepend"><span class="input-group-text">$</span></div>
-                    <input type="number" id="sale_amount" name="sale_amount" step="0.01" min="0" placeholder="0.00"
-                        value="<?php echo htmlspecialchars($sale_amount); ?>" required>
-                </div>
+                <input type="number" id="sale_amount" name="sale_amount" step="0.01" min="0" placeholder="0.00"
+                    value="<?php echo htmlspecialchars($sale_amount); ?>" required>
             </div>
 
             <div class="form-group">
@@ -398,20 +355,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_sale'])) {
             const historyContentDiv = document.getElementById('sales-history-content');
 
             if (selectedEmployeeId) {
-                // Show the history section and display loading message
                 historyDiv.style.display = 'block';
                 historyContentDiv.innerHTML = '<p class="loading">Loading sales history...</p>';
-
-                // Fetch sales data using AJAX
                 fetch(`fetch_employee_sales.php?employee_id=${selectedEmployeeId}`)
                     .then(response => {
                         if (!response.ok) {
                             throw new Error(`HTTP error! status: ${response.status}`);
                         }
-                        return response.text(); // Get response as HTML text
+                        return response.text();
                     })
                     .then(html => {
-                        // Display the fetched HTML
                         historyContentDiv.innerHTML = html;
                     })
                     .catch(error => {
@@ -419,13 +372,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['submit_sale'])) {
                         historyContentDiv.innerHTML = '<p class="error-message">Could not load sales history. Please try again.</p>';
                     });
             } else {
-                // If "Select Seller..." is chosen, hide the history section
                 historyDiv.style.display = 'none';
-                historyContentDiv.innerHTML = '<p class="no-sales">Select an employee to view their sales history.</p>'; // Reset content
+                historyContentDiv.innerHTML = '<p class="no-sales">Select an employee to view their sales history.</p>';
             }
         }
-
-        // Optional: Call fetchSalesHistory on page load if an employee is pre-selected (e.g., after form error)
         document.addEventListener('DOMContentLoaded', () => {
             if (document.getElementById('employee_id').value) {
                 fetchSalesHistory();
