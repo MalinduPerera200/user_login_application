@@ -91,7 +91,7 @@ $username = isset($_SESSION['username']) ? $_SESSION['username'] : 'User'; // De
 
     <div class="navbar">
         <span>Welcome, <?php echo htmlspecialchars($username); ?>!</span>
-        <a href="logout.php">Logout</a>
+        <a href="logout.php" class="logout-link" onclick="return confirm('Are you sure you want to logout?');">Logout</a>
     </div>
 
     <div class="content">
