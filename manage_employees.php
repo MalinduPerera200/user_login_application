@@ -16,20 +16,21 @@ $current_user_id = $_SESSION['user_id'];
 $employees = [];
 $errors = [];
 $success_message = '';
-$edit_mode = false; // Flag to check if we are in edit mode
-$edit_employee_data = null; // To store data of employee being edited
+$edit_mode = false;
+$edit_employee_data = null;
 
 // --- Check for Edit Request (GET) ---
 if ($_SERVER["REQUEST_METHOD"] == "GET" && isset($_GET['edit']) && filter_var($_GET['edit'], FILTER_VALIDATE_INT)) {
     $employee_id_to_edit = $_GET['edit'];
-    $sql_edit = "SELECT id, name, username, phone, job_title, location FROM employees WHERE id = ?";
+    // Removed job_title from SELECT
+    $sql_edit = "SELECT id, name, username, phone, location FROM employees WHERE id = ?";
     if ($stmt_edit = $conn->prepare($sql_edit)) {
         $stmt_edit->bind_param("i", $employee_id_to_edit);
         $stmt_edit->execute();
         $result_edit = $stmt_edit->get_result();
         if ($result_edit->num_rows === 1) {
             $edit_employee_data = $result_edit->fetch_assoc();
-            $edit_mode = true; // Set edit mode to true
+            $edit_mode = true;
         } else {
             $errors[] = "Employee not found for editing.";
         }
@@ -42,11 +43,10 @@ if ($_SERVER["REQUEST_METHOD"] == "GET" && isset($_GET['edit']) && filter_var($_
 
 // --- Handle Add Employee Form Submission ---
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_employee'])) {
-    // Get data from form
+    // Get data from form - removed job_title
     $name = trim($_POST['name']);
     $username = trim($_POST['username']);
     $phone = trim($_POST['phone']);
-    $job_title = trim($_POST['job_title']);
     $location = trim($_POST['location']);
 
     // Validation
@@ -58,11 +58,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_employee'])) {
     }
 
     if (empty($errors)) {
-        $sql_insert = "INSERT INTO employees (name, username, phone, job_title, location, registered_by_user_id) VALUES (?, ?, ?, ?, ?, ?)";
+        // Removed job_title from INSERT and VALUES placeholders
+        $sql_insert = "INSERT INTO employees (name, username, phone, location, registered_by_user_id) VALUES (?, ?, ?, ?, ?)";
         if ($stmt = $conn->prepare($sql_insert)) {
-            $stmt->bind_param("sssssi", $name, $username, $phone, $job_title, $location, $current_user_id);
+            // Updated bind_param types ('ssssi' - 4 strings, 1 integer)
+            $stmt->bind_param("ssssi", $name, $username, $phone, $location, $current_user_id);
             if ($stmt->execute()) {
-                header("Location: manage_employees.php?success=1"); // Add success
+                header("Location: manage_employees.php?success=1");
                 exit();
             } else {
                 if ($stmt->errno == 1062 && strpos($stmt->error, 'username_unique') !== false) {
@@ -80,17 +82,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_employee'])) {
 
 // --- Handle Update Employee Form Submission ---
 elseif ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_employee'])) {
-    // Get data from form
-    $employee_id = trim($_POST['employee_id']); // Get ID from hidden field
+    // Get data from form - removed job_title
+    $employee_id = trim($_POST['employee_id']);
     $name = trim($_POST['name']);
     $username = trim($_POST['username']);
     $phone = trim($_POST['phone']);
-    $job_title = trim($_POST['job_title']);
     $location = trim($_POST['location']);
 
     // Validation
     if (empty($employee_id) || !filter_var($employee_id, FILTER_VALIDATE_INT)) {
-        $errors[] = "Invalid Employee ID for update.";
+        $errors[] = "Invalid Employee ID.";
     }
     if (empty($name)) {
         $errors[] = "Name is required.";
@@ -98,27 +99,22 @@ elseif ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_employee'])
     if (empty($username)) {
         $errors[] = "Username is required.";
     }
-    // Add more validation
 
     if (empty($errors)) {
-        // Prepare UPDATE statement
-        $sql_update = "UPDATE employees SET name = ?, username = ?, phone = ?, job_title = ?, location = ? WHERE id = ?";
+        // Removed job_title from UPDATE statement
+        $sql_update = "UPDATE employees SET name = ?, username = ?, phone = ?, location = ? WHERE id = ?";
         if ($stmt = $conn->prepare($sql_update)) {
-            // Bind parameters (sssssi - 5 strings, 1 integer for ID)
-            $stmt->bind_param("sssssi", $name, $username, $phone, $job_title, $location, $employee_id);
+            // Updated bind_param types ('ssssi' - 4 strings, 1 integer for ID)
+            $stmt->bind_param("ssssi", $name, $username, $phone, $location, $employee_id);
             if ($stmt->execute()) {
-                // Check if any row was actually updated
                 if ($stmt->affected_rows > 0) {
-                    header("Location: manage_employees.php?success=4"); // Update success
+                    header("Location: manage_employees.php?success=4");
                     exit();
                 } else {
-                    // No rows updated - maybe data was the same, or ID didn't exist (though unlikely if validation passed)
-                    // Redirect anyway to show the list, maybe with a neutral message? Or just back to list.
-                    header("Location: manage_employees.php?success=5"); // Indicate 'no changes' or just redirect
+                    header("Location: manage_employees.php?success=5"); // No changes detected
                     exit();
                 }
             } else {
-                // Check for duplicate username error (MySQL error code 1062) - make sure it's not the current user's username causing the conflict
                 if ($stmt->errno == 1062 && strpos($stmt->error, 'username_unique') !== false) {
                     $errors[] = "Error: Employee username already exists for another employee.";
                 } else {
@@ -130,26 +126,24 @@ elseif ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['update_employee'])
             $errors[] = "Database error preparing update statement: " . $conn->error;
         }
     }
-    // If update fails due to error, stay in edit mode for this employee
+    // If update fails, stay in edit mode
     if (!empty($errors)) {
         $edit_mode = true;
-        // Repopulate $edit_employee_data with submitted (but failed) data to show in form
+        // Repopulate $edit_employee_data with submitted (but failed) data
         $edit_employee_data = [
             'id' => $employee_id,
             'name' => $name,
             'username' => $username,
             'phone' => $phone,
-            'job_title' => $job_title,
-            'location' => $location
+            'location' => $location // Removed job_title
         ];
     }
 }
 
 
 // --- Handle Deactivate/Activate Actions (GET requests) ---
-elseif ($_SERVER["REQUEST_METHOD"] == "GET") { // Changed from if to elseif
+elseif ($_SERVER["REQUEST_METHOD"] == "GET") {
     $action_success = false;
-
     // Deactivate
     if (isset($_GET['deactivate']) && filter_var($_GET['deactivate'], FILTER_VALIDATE_INT)) {
         $employee_id_to_deactivate = $_GET['deactivate'];
@@ -193,7 +187,6 @@ elseif ($_SERVER["REQUEST_METHOD"] == "GET") { // Changed from if to elseif
 }
 
 // --- Display Success Messages ---
-// Moved this block down to ensure it runs after potential redirects
 if (isset($_GET['success'])) {
     switch ($_GET['success']) {
         case '1':
@@ -210,14 +203,15 @@ if (isset($_GET['success'])) {
             break;
         case '5':
             $success_message = "No changes detected for the employee.";
-            break; // Optional message for no update
+            break;
     }
 }
 
 
 // --- Fetch employee list (Always fetch AFTER potential updates/adds/status changes) ---
-$employees = []; // Reset employee array
-$sql_fetch = "SELECT e.id, e.name, e.username, e.phone, e.job_title, e.location, e.status, e.created_at, u.username as registered_by
+$employees = [];
+// Removed e.job_title from SELECT
+$sql_fetch = "SELECT e.id, e.name, e.username, e.phone, e.location, e.status, e.created_at, u.username as registered_by
               FROM employees e
               LEFT JOIN users u ON e.registered_by_user_id = u.id
               ORDER BY e.name ASC";
@@ -226,12 +220,12 @@ if ($result && $result->num_rows > 0) {
     while ($row = $result->fetch_assoc()) {
         $employees[] = $row;
     }
-} elseif (!$result && empty($errors)) { // Avoid overwriting previous errors
+} elseif (!$result && empty($errors)) { // Avoid overwriting previous errors if fetching fails
     $errors[] = "Error fetching employees: " . $conn->error;
 }
 
 
-$conn->close(); // Close connection at the end
+$conn->close();
 
 ?>
 <!DOCTYPE html>
@@ -367,7 +361,6 @@ $conn->close(); // Close connection at the end
             background-color: #0056b3;
         }
 
-        /* Blue for update */
         .btn-cancel {
             background-color: #6c757d;
             margin-left: 10px;
@@ -377,7 +370,6 @@ $conn->close(); // Close connection at the end
             vertical-align: middle;
         }
 
-        /* Grey for cancel */
         .btn-cancel:hover {
             background-color: #5a6268;
         }
@@ -550,17 +542,12 @@ $conn->close(); // Close connection at the end
                         <input type="tel" id="phone" name="phone" value="<?php echo htmlspecialchars($edit_employee_data['phone'] ?? ''); ?>">
                     </div>
                     <div class="form-group">
-                        <label for="job_title">Job Title:</label>
-                        <input type="text" id="job_title" name="job_title" value="<?php echo htmlspecialchars($edit_employee_data['job_title'] ?? ''); ?>">
-                    </div>
-                    <div class="form-group">
                         <label for="location">Location:</label>
                         <input type="text" id="location" name="location" value="<?php echo htmlspecialchars($edit_employee_data['location'] ?? ''); ?>">
                     </div>
                 </div>
                 <div class="form-actions">
                     <input type="hidden" name="employee_id" value="<?php echo htmlspecialchars($edit_employee_data['id'] ?? ''); ?>">
-
                     <?php if ($edit_mode): ?>
                         <button type="submit" name="update_employee" class="btn btn-update">Update Employee</button>
                         <a href="manage_employees.php" class="btn btn-cancel">Cancel</a>
@@ -580,7 +567,6 @@ $conn->close(); // Close connection at the end
                         <th>Name</th>
                         <th>Username</th>
                         <th>Phone</th>
-                        <th>Job Title</th>
                         <th>Location</th>
                         <th>Registered Date</th>
                         <th>Registered By</th>
@@ -591,13 +577,12 @@ $conn->close(); // Close connection at the end
                 <tbody>
                     <?php if (!empty($employees)): ?>
                         <?php foreach ($employees as $emp): ?>
-                            <tr <?php echo ($edit_mode && $edit_employee_data['id'] == $emp['id']) ? 'style="background-color: #cfe2ff;"' : ''; // Highlight row being edited 
+                            <tr <?php echo ($edit_mode && isset($edit_employee_data['id']) && $edit_employee_data['id'] == $emp['id']) ? 'style="background-color: #cfe2ff;"' : ''; // Highlight row being edited 
                                 ?>>
                                 <td><?php echo htmlspecialchars($emp['id']); ?></td>
                                 <td><?php echo htmlspecialchars($emp['name']); ?></td>
                                 <td><?php echo htmlspecialchars($emp['username']); ?></td>
                                 <td><?php echo htmlspecialchars($emp['phone']); ?></td>
-                                <td><?php echo htmlspecialchars($emp['job_title']); ?></td>
                                 <td><?php echo htmlspecialchars($emp['location']); ?></td>
                                 <td><?php echo htmlspecialchars(date('Y-m-d', strtotime($emp['created_at']))); ?></td>
                                 <td><?php echo htmlspecialchars($emp['registered_by'] ?? 'N/A'); ?></td>
@@ -618,7 +603,7 @@ $conn->close(); // Close connection at the end
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="10" style="text-align:center;">No employees found.</td>
+                            <td colspan="9" style="text-align:center;">No employees found.</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>
